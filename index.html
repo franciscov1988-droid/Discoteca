@@ -125,6 +125,16 @@
   .album .a{font-size:12.5px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .stars{font-size:13px;letter-spacing:1px;margin-top:4px;color:var(--line)}
   .stars b{color:var(--accent);font-weight:400}
+  .album .pcount{position:absolute;bottom:8px;left:8px;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(33,29,25,.72);color:#fff;backdrop-filter:blur(2px)}
+  .album .quick{position:absolute;bottom:7px;right:7px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.92);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.25);opacity:0;transition:opacity .15s,transform .1s;border:1px solid rgba(0,0,0,.06)}
+  .album:hover .quick{opacity:1}
+  .album .quick:hover{background:#fff;color:var(--accent-deep);transform:scale(1.08)}
+  @media(hover:none){.album .quick{opacity:1}}
+  .counter{display:flex;align-items:center;gap:8px}
+  .counter button{width:38px;height:38px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-size:19px;font-weight:600;color:var(--ink);display:flex;align-items:center;justify-content:center}
+  .counter button:hover{border-color:var(--accent)}
+  .counter .pv{font-family:var(--font-display);font-weight:800;font-size:22px;min-width:34px;text-align:center}
+  .counter .plusday{width:auto!important;padding:0 13px;font-size:13px;font-weight:600;color:var(--accent-deep)}
 
   .empty{text-align:center;padding:70px 20px;color:var(--muted)}
   .empty .big{font-family:var(--font-display);font-weight:700;font-size:22px;color:var(--ink);letter-spacing:-.01em;margin-bottom:8px}
@@ -324,7 +334,7 @@ let gTokenClient=null,gToken=null,connected=false,syncStatus='unconfigured',auto
 function load(){
   try{const d=JSON.parse(localStorage.getItem(LS_KEY));if(d){
     const albums=Array.isArray(d.albums)?d.albums:[];
-    albums.forEach(a=>{if(!a.updatedAt)a.updatedAt=a.addedAt||new Date().toISOString();});
+    albums.forEach(a=>{if(!a.updatedAt)a.updatedAt=a.addedAt||new Date().toISOString();if(typeof a.plays!=='number')a.plays=(a.status==='listened'?1:0);});
     return{albums,settings:Object.assign({annualGoal:50,updatedAt:'',defaultProvider:'auto',lastfmKey:''},d.settings||{}),
       deleted:Array.isArray(d.deleted)?d.deleted:[],view:'col',filter:'all',sort:'added',query:''};
   }}catch(e){}
@@ -438,13 +448,13 @@ async function addFromResult(it){
   if(it.provider==='deezer'&&(!it.year||!it.genre)){try{Object.assign(it,await enrichDeezer(it.providerId));}catch(e){}}
   const album={id:uid(),title:it.title,artist:it.artist,cover:it.cover||'',year:it.year||'',releaseDate:it.releaseDate||'',
     genre:it.genre||'',trackCount:it.trackCount||null,provider:it.provider,providerId:it.providerId,url:it.url||'',
-    status:'listened',rating:0,favorite:false,dateListened:todayISO(),notes:'',addedAt:nowISO(),updatedAt:nowISO()};
+    plays:1,status:'listened',rating:0,favorite:false,dateListened:todayISO(),notes:'',addedAt:nowISO(),updatedAt:nowISO()};
   state.albums.push(album);save();closeResults();$('#q').value='';render();scheduleSync();openEdit(album.id,true);
 }
 
 function openManual(t){
   openEditObject({id:uid(),title:t||'',artist:'',cover:'',year:'',releaseDate:'',genre:'',trackCount:null,provider:'manual',providerId:'',url:'',
-    status:'listened',rating:0,favorite:false,dateListened:todayISO(),notes:'',addedAt:nowISO(),updatedAt:nowISO(),_isNew:true},true);
+    plays:1,status:'listened',rating:0,favorite:false,dateListened:todayISO(),notes:'',addedAt:nowISO(),updatedAt:nowISO(),_isNew:true},true);
 }
 function starsHTML(r){let h='';for(let i=1;i<=5;i++)h+=i<=r?'<b>★</b>':'★';return h;}
 
@@ -461,8 +471,9 @@ function filteredSorted(){
   return a.sort(cmp);
 }
 function cardHTML(a){
-  return `<button class="album" data-id="${a.id}"><div class="art"><img src="${esc(a.cover||placeholder(a.title))}" loading="lazy" alt="${esc(a.title)}" onerror="this.onerror=null;this.src='${placeholder(a.title)}'"><span class="badge ${STATUS[a.status].badge}">${STATUS[a.status].label}</span>${a.favorite?'<span class="fav">★</span>':''}</div><div class="meta"><div class="t">${esc(a.title)}</div><div class="a">${esc(a.artist)}${a.year?' · '+esc(a.year):''}</div><div class="stars">${starsHTML(a.rating)}</div></div></button>`;
+  return `<div class="album" data-id="${a.id}" tabindex="0" role="button"><div class="art"><img src="${esc(a.cover||placeholder(a.title))}" loading="lazy" alt="${esc(a.title)}" onerror="this.onerror=null;this.src='${placeholder(a.title)}'"><span class="badge ${STATUS[a.status].badge}">${STATUS[a.status].label}</span>${a.favorite?'<span class="fav">★</span>':''}${(a.plays||0)>0?`<span class="pcount">▶ ${a.plays}</span>`:''}<button class="quick" type="button" data-quick="${a.id}" title="Registrar una escucha">▶</button></div><div class="meta"><div class="t">${esc(a.title)}</div><div class="a">${esc(a.artist)}${a.year?' · '+esc(a.year):''}</div><div class="stars">${starsHTML(a.rating)}</div></div></div>`;
 }
+function quickPlay(id){const a=state.albums.find(x=>x.id===id);if(!a)return;a.plays=(a.plays||0)+1;a.dateListened=todayISO();if(a.status!=='listened')a.status='listened';a.updatedAt=nowISO();save();render();scheduleSync();toast('Escucha registrada · '+a.title+' (×'+a.plays+')');}
 function renderCollection(){
   const list=filteredSorted(),total=state.albums.length,q=state.query.trim();
   const c=$('#collection');
@@ -481,7 +492,8 @@ function renderCollection(){
   }else{
     c.innerHTML='<div class="grid">'+list.map(cardHTML).join('')+'</div>';
   }
-  c.querySelectorAll('.album').forEach(el=>el.onclick=()=>openEdit(el.dataset.id));
+  c.querySelectorAll('.album').forEach(el=>{el.onclick=()=>openEdit(el.dataset.id);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEdit(el.dataset.id);}};});
+  c.querySelectorAll('.quick').forEach(el=>el.onclick=e=>{e.stopPropagation();quickPlay(el.dataset.quick);});
 }
 
 /* ---------- ficha / edición ---------- */
@@ -492,6 +504,7 @@ function openEditObject(a){
   m.innerHTML=`<div class="mhead"><img id="d-cover" src="${esc(d.cover||placeholder(d.title))}" alt="" onerror="this.onerror=null;this.src='${placeholder(d.title)}'"><div class="ht"><input class="tt" id="d-title" value="${esc(d.title)}" placeholder="Título del disco"><input class="aa" id="d-artist" value="${esc(d.artist)}" placeholder="Artista / banda"></div></div>
   <div class="mbody"><div class="row"><div class="grp"><label>Calificación</label><div class="rate" id="d-rate">${[1,2,3,4,5].map(i=>`<span data-v="${i}" class="${i<=d.rating?'on':''}">★</span>`).join('')}</div></div><div class="grp"><label>Favorito</label><div class="favtoggle ${d.favorite?'on':''}" id="d-fav"><span class="box">★</span><span>Marcar como favorito</span></div></div></div>
   <div class="grp" style="margin-bottom:16px"><label>Estante</label><div class="statuspick" id="d-status"><button data-s="want" class="${d.status==='want'?'on':''}">Por escuchar</button><button data-s="listening" class="${d.status==='listening'?'on':''}">Escuchando</button><button data-s="listened" class="${d.status==='listened'?'on':''}">Escuchado</button></div></div>
+  <div class="row"><div class="grp"><label>Veces escuchado</label><div class="counter" id="d-plays"><button type="button" data-d="-1">−</button><span class="pv" id="d-playsval">${d.plays||0}</span><button type="button" data-d="1">+</button><button type="button" class="plusday" id="d-playsday">+1 hoy</button></div></div></div>
   <div class="row"><div class="grp"><label>Fecha de escucha</label><input type="date" id="d-date" value="${esc(d.dateListened||'')}"></div><div class="grp"><label>Año de lanzamiento</label><input id="d-year" value="${esc(d.year||'')}" placeholder="Ej. 1997"></div></div>
   <div class="row"><div class="grp"><label>Género</label><input id="d-genre" value="${esc(d.genre||'')}" placeholder="Ej. Rock alternativo"></div><div class="grp"><label>Portada (URL)</label><input id="d-coverurl" value="${esc(d.cover||'')}" placeholder="https://…"></div></div>
   <div class="grp" style="margin-bottom:14px"><label>Notas / reseña</label><textarea id="d-notes" placeholder="¿Qué te pareció? Canciones favoritas, contexto, con quién lo escuchaste…">${esc(d.notes||'')}</textarea></div></div>
@@ -501,6 +514,10 @@ function openEditObject(a){
   m.querySelector('#d-rate').onclick=e=>{const s=e.target.closest('span');if(!s)return;let v=+s.dataset.v;if(v===d.rating)v=0;d.rating=v;m.querySelectorAll('#d-rate span').forEach(sp=>sp.classList.toggle('on',+sp.dataset.v<=v));};
   m.querySelector('#d-fav').onclick=()=>{d.favorite=!d.favorite;m.querySelector('#d-fav').classList.toggle('on',d.favorite);};
   m.querySelector('#d-status').onclick=e=>{const b=e.target.closest('button');if(!b)return;d.status=b.dataset.s;m.querySelectorAll('#d-status button').forEach(x=>x.classList.toggle('on',x===b));if(d.status==='listened'&&!m.querySelector('#d-date').value)m.querySelector('#d-date').value=todayISO();};
+  m.querySelector('#d-plays').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+    if(b.id==='d-playsday'){d.plays=(d.plays||0)+1;m.querySelector('#d-date').value=todayISO();d.status='listened';m.querySelectorAll('#d-status button').forEach(x=>x.classList.toggle('on',x.dataset.s==='listened'));}
+    else{d.plays=Math.max(0,(d.plays||0)+(+b.dataset.d));}
+    m.querySelector('#d-playsval').textContent=d.plays;};
   m.querySelector('#d-coverurl').oninput=e=>{const v=e.target.value.trim();m.querySelector('#d-cover').src=v||placeholder(m.querySelector('#d-title').value);};
   m.querySelector('#d-title').oninput=e=>{if(!m.querySelector('#d-coverurl').value.trim())m.querySelector('#d-cover').src=placeholder(e.target.value);};
   if(d.url){const ext=m.querySelector('#d-ext');if(ext)ext.onclick=()=>window.open(d.url,'_blank','noopener');}
@@ -514,7 +531,7 @@ function saveDraft(a,manualNew){
   const title=get('#d-title').trim();
   if(!title){toast('El disco necesita un título');m.querySelector('#d-title').focus();return;}
   const upd={title,artist:get('#d-artist').trim(),rating:d.rating,favorite:d.favorite,status:d.status,dateListened:get('#d-date'),
-    year:get('#d-year').trim(),genre:get('#d-genre').trim(),cover:get('#d-coverurl').trim(),notes:get('#d-notes').trim(),updatedAt:nowISO()};
+    year:get('#d-year').trim(),genre:get('#d-genre').trim(),cover:get('#d-coverurl').trim(),notes:get('#d-notes').trim(),plays:(d.plays||0),updatedAt:nowISO()};
   if(manualNew){delete d._isNew;Object.assign(d,upd);state.albums.push(d);toast('Disco agregado');}
   else{Object.assign(a,upd);toast('Cambios guardados');}
   save();closeModal();render();scheduleSync();
@@ -560,6 +577,10 @@ function renderStats(){
   const rated=A.filter(a=>a.rating>0);
   const avg=rated.length?rated.reduce((s,a)=>s+a.rating,0)/rated.length:0;
   const favs=A.filter(a=>a.favorite).length;
+  const totalPlays=A.reduce((s,a)=>s+(a.plays||0),0);
+  const topPlayed=A.filter(a=>(a.plays||0)>0).sort((x,y)=>(y.plays||0)-(x.plays||0)).slice(0,8);
+  const tpMax=Math.max(1,...topPlayed.map(a=>a.plays||0));
+  const topPlayedHtml=topPlayed.length?('<div class="panel full"><h3>Discos más escuchados</h3>'+topPlayed.map(a=>`<div class="bar"><div class="lb" title="${esc(a.title+' — '+a.artist)}">${esc(a.title)}</div><div class="track"><div class="fill" style="width:${Math.round((a.plays||0)/tpMax*100)}%"></div></div><div class="vv">${a.plays||0}</div></div>`).join('')+'</div>'):'';
   const count=(arr,k)=>{const m={};arr.forEach(a=>{const key=(a[k]||'').trim();if(key)m[key]=(m[key]||0)+1;});return Object.entries(m).sort((x,y)=>y[1]-x[1]);};
   const genres=count(A,'genre').slice(0,8),artists=count(A,'artist').slice(0,8);
   const rd=[5,4,3,2,1].map(r=>({r,n:A.filter(a=>a.rating===r).length})),rdMax=Math.max(1,...rd.map(x=>x.n));
@@ -575,12 +596,14 @@ function renderStats(){
     <div class="tile"><div class="n">${listened.length}</div><div class="l">Escuchados</div></div>
     <div class="tile"><div class="n">${thisYear.length}</div><div class="l">Escuchados en ${year}</div></div>
     <div class="tile"><div class="n">${avg?avg.toFixed(1):'—'}</div><div class="l">Calificación promedio</div></div>
-    <div class="tile"><div class="n">${favs}</div><div class="l">Favoritos</div></div></div>
+    <div class="tile"><div class="n">${favs}</div><div class="l">Favoritos</div></div>
+    <div class="tile"><div class="n">${totalPlays}</div><div class="l">Escuchas totales</div></div></div>
     <div class="panels">
       <div class="panel full"><h3>Reto de ${year}</h3><div class="goal"><div class="ring" style="--p:${pct}"><div class="in"><b>${thisYear.length}</b><span>de ${goal}</span></div></div>
         <div class="gtxt"><p>Llevas <b>${thisYear.length}</b> disco${thisYear.length!==1?'s':''} escuchado${thisYear.length!==1?'s':''} este año — ${pct}% de tu meta.</p>
         <div class="gedit"><label style="font-size:13px;color:var(--muted)">Meta anual:</label><input type="number" min="1" id="goalinput" value="${goal}"><button class="btn ghost mini" id="goalsave">Actualizar</button></div></div></div></div>
       ${heatmapPanel(listened)}
+      ${topPlayedHtml}
       <div class="panel"><h3>Distribución de calificaciones</h3>${rd.map(x=>`<div class="bar"><div class="lb">${x.r} ★</div><div class="track"><div class="fill" style="width:${Math.round(x.n/rdMax*100)}%"></div></div><div class="vv">${x.n}</div></div>`).join('')}</div>
       <div class="panel"><h3>Géneros principales</h3>${bars(genres,gMax)}</div>
       <div class="panel"><h3>Artistas más escuchados</h3>${bars(artists,aMax)}</div>
